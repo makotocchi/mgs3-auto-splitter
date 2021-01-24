@@ -1,4 +1,4 @@
-// MGS3 Auto Splitter
+// MGS3 Emulator Auto Splitter
 // By apel
 // Based on the Resident Evil CVX Auto Splitter
 // https://github.com/kapdap/re-cvx-autosplitter
@@ -8,8 +8,6 @@ state("rpcs3") {}
 
 startup 
 {
-    print("Loading script...");
-
     // Swaps 4 byte values
     vars.SwapBytesInt = (Func<uint, uint>)((value) => {
         return ((value & 0x000000ff) << 24) +
@@ -105,139 +103,102 @@ startup
     settings.Add("s192a", true, "Zaozyorje East");
     settings.Add("s201a", true, "Rokovoj Bereg");
     settings.Add("s211a", true, "WIG: Interior");
-    settings.Add("ending", true, "Stats Screen");
 }
 
 init
 {
-    print("Process loaded!!");
+    switch (game.ProcessName.ToLower())
+    {
+        case "pcsx2":
+            vars.basePointer = 0x20000000;
+            vars.isBigEndian = false;
+            break;
 
-    vars.gameProcess = String.Empty; // Used to detect when the process has changed
-    vars.productCode = String.Empty; // Used to detect when the game release has changed
-    vars.basePointer = IntPtr.Zero; // Emulator virtual memory base pointer
-    vars.isBigEndian = false; // Console uses big endian (PS3)
-
-    // Sets memory pointers for the detected game release
-    vars.UpdatePointers = (Action) (() => {
-        switch ((string)vars.productCode)
-        {
-            case "SLUS_213.59": // [PS2] Subsistence NTSC-U
-                vars.loadFlagAddress = 0x0020C16C;
-                vars.areaCodeAddress = 0x001D5AC0;
-                vars.ocelotSpeechOverFlagAddress = 0x0020C168;
-                break;
-
-            case "SLES_820.42": // [PS2] Subsistence PAL-E-F
-                vars.loadFlagAddress = 0x0020CE6C;
-                vars.areaCodeAddress = 0x001D67A0;
-                vars.ocelotSpeechOverFlagAddress = 0x0020CE68;
-                break;
-                
-            case "NPUB30610": // [PS3] HDC NTSC-U
-                vars.loadFlagAddress = 0x01B8F32C;
-                vars.areaCodeAddress = 0x011FCD30;
-                vars.ocelotSpeechOverFlagAddress = 0x01B8F328;
-                break;
-        }
-    });
-
-    // Detects if the process has changed
-    vars.UpdateProcess = (Action) (() => {
-        if (vars.gameProcess != game.ProcessName)
-        {
-            vars.gameProcess = game.ProcessName;
-            vars.isBigEndian = vars.gameProcess.ToLower() == "rpcs3";
-        }
-    });
-
-    // Set emulator base pointer
-    vars.UpdatePointer = (Action) (() => {
-        switch ((string)vars.gameProcess.ToLower())
-        {
-            case "pcsx2":
-                vars.basePointer = 0x20000000;
-                break;
-
-            case "rpcs3":
-                vars.basePointer = 0x300000000;
-                break;
-        }
-    });
-
-    // Detects if the game release has changed
-    vars.UpdateProduct = (Action) (() => {
-        string productCode = "";
-
-        switch ((string)vars.gameProcess.ToLower())
-        {
-            case "pcsx2":
-                productCode = memory.ReadString(new IntPtr(vars.basePointer + 0x00015B90), 11);
-                break;
-
-            case "rpcs3":
-                productCode = memory.ReadString(new IntPtr(vars.basePointer + 0x20010251), 9);
-                break;
-        }
-
-        if (vars.productCode != productCode)
-        {
-            vars.productCode = productCode;
-            vars.UpdatePointers();
-        }
-    });
-
-    // Updates game values
-    vars.UpdateValues = (Action) (() => {
-        uint loadFlag = 0;
-        memory.ReadValue<uint>(new IntPtr(vars.basePointer + vars.loadFlagAddress), out loadFlag);
-        current.loadFlag = (vars.isBigEndian ? vars.SwapBytesInt(loadFlag) : loadFlag) == 1;
-
-        current.areaCode = memory.ReadString(new IntPtr(vars.basePointer + vars.areaCodeAddress), 7);
-        
-        uint ocelotSpeechOverFlag = 0;
-        memory.ReadValue<uint>(new IntPtr(vars.basePointer + vars.ocelotSpeechOverFlagAddress), out ocelotSpeechOverFlag);
-        current.ocelotSpeechOverFlag = (vars.isBigEndian ? vars.SwapBytesInt(ocelotSpeechOverFlag) : ocelotSpeechOverFlag) == 1;
-    });
-
-    // Initialise values
-    vars.UpdateProcess();
-    vars.UpdatePointer();
-    vars.UpdateProduct();
-    vars.UpdateValues();
+        case "rpcs3":
+            vars.basePointer = 0x300000000;
+            vars.isBigEndian = true;
+            break;
+    }
 }
 
 update
 {
-    vars.UpdateProcess();
-    vars.UpdatePointer();
-    vars.UpdateProduct();
-    vars.UpdateValues();
+    string productCode = "";
+
+    switch (game.ProcessName.ToLower())
+    {
+        case "pcsx2":
+            productCode = memory.ReadString(new IntPtr(vars.basePointer + 0x00015B90), 11);
+            break;
+
+        case "rpcs3":
+            productCode = memory.ReadString(new IntPtr(vars.basePointer + 0x20010251), 9);
+            break;
+    }
+
+    switch (productCode)
+    {
+        case "SLUS_213.59": // [PS2] Subsistence NTSC-U
+            vars.gameplayFlagAddress = 0x0020C260;
+            vars.areaCodeAddress = 0x001D5AC0;
+            break;
+
+        case "SLES_820.42": // [PS2] Subsistence PAL-E-F
+            vars.gameplayFlagAddress = 0x0020CF60;
+            vars.areaCodeAddress = 0x001D67A0;
+            break;
+            
+        case "NPUB30610": // [PS3] HDC NTSC-U
+            vars.gameplayFlagAddress = 0x01B3C040;
+            vars.areaCodeAddress = 0x011FCD30;
+            break;
+        
+        default:
+            vars.gameplayFlagAddress = 0;
+            vars.areaCodeAddress = 0;
+            break;
+    }
+
+    vars.isGameActive = true;
+
+    if (vars.gameplayFlagAddress != 0) 
+    {
+        uint isGameplay = 0;
+        memory.ReadValue<uint>(new IntPtr(vars.basePointer + vars.gameplayFlagAddress), out isGameplay);
+        current.isGameplay = (vars.isBigEndian ? vars.SwapBytesInt(isGameplay) : isGameplay) == 1;
+    }
+    else
+    {
+        vars.isGameActive = false;
+    }
+
+    if (vars.areaCodeAddress != 0)
+    {
+        current.areaCode = memory.ReadString(new IntPtr(vars.basePointer + vars.areaCodeAddress), 7);
+    }
+    else
+    {
+        vars.isGameActive = false;
+    }
 }
 
 isLoading
 {
-    return current.loadFlag;
+    return vars.isGameActive && !current.isGameplay;
 }
 
 start 
 {
-    return current.areaCode == "v000a_0" && !current.loadFlag;
+    return vars.isGameActive && current.areaCode == "v000a_0" && current.isGameplay;
 }
 
 reset
 {
-    return current.areaCode == "title";
+    return vars.isGameActive && current.areaCode == "title";
 }
 
 split
 {
-    try
-    {
-        return (current.areaCode != old.areaCode && settings[old.areaCode]) 
-            || (current.areaCode == "ending" && !old.ocelotSpeechOverFlag && current.ocelotSpeechOverFlag);
-    }
-    catch
-    {
-        return false;
-    }
+    return vars.isGameActive
+        && ((current.areaCode != old.areaCode && settings[old.areaCode]) || (current.areaCode == "ending" && old.isGameplay && !current.isGameplay));
 }
