@@ -1,4 +1,4 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.3
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.4
 // By apel
 
 state("METAL GEAR SOLID3") 
@@ -18,13 +18,11 @@ state("METAL GEAR SOLID3")
     int gameOverPhase : 0x1D4EB08, 0x5C;
     int deathTimer : 0x1E35A48;
     byte gameStateFlags : 0x1E35A13;
-    byte timerCode : 0x7256E;
-    byte exitToTitleCode : 0x737EB;
 }
 
 startup 
 {
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.3");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.4");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("game_mods", false, "Game Mods");
@@ -148,15 +146,24 @@ startup
 
 init
 {
+    var moduleMemorySize = modules.First().ModuleMemorySize;
+    var baseAddress = modules.First().BaseAddress;
+
     // steam or steamless exe
-    if (modules.First().ModuleMemorySize == 0x1F2C000 || modules.First().ModuleMemorySize == 0x1EF9000)
+    if (moduleMemorySize == 0x1F2C000 || moduleMemorySize == 0x1EF9000)
     {
-        version = "US/EU v1.2.0";
+        version = "US/EU v1.2.x";
     }
     else
     {
-        version = "Unknown - " + modules.First().ModuleMemorySize.ToString("X16");
+        version = "Unknown - " + moduleMemorySize.ToString("X16");
     }
+
+    var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
+    var loadTitleCode = scanner.Scan(new SigScanTarget(0, "E8 6E FA FF FF 48 8D"));
+    vars.QuickDevMenuModAddress = loadTitleCode - 4;
+    vars.ExitToTitleScreenAssemblyCode = memory.ReadValue<int>((IntPtr)vars.QuickDevMenuModAddress); // this is going to read an address that points to the string "title"
+    vars.QuickDevMenuAssemblyCode = vars.ExitToTitleScreenAssemblyCode + 0x1C358; // adding 0x1C358 to the "title" address gives us the string "select"
 }
 
 exit
@@ -165,22 +172,17 @@ exit
 
 update
 {
+    var baseAddress = modules.First().BaseAddress;
+
     // setting the value in that address to 3 always skips the splash screens
     if (settings["skip_splash_screens"] && (current.splashScreenCheck == 1 || current.splashScreenCheck == 2))
     {
-        game.WriteValue<int>(modules.First().BaseAddress + 0x143B160, 3);
+        game.WriteValue<int>(baseAddress + 0x143B160, 3);
     }
 
-    // use the IsLoading flag to stop the IGT
-    if (settings["igt_without_loads"] && current.timerCode == 0x0)
+    if (settings["igt_without_loads"])
     {
-        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x41, 0x7B, 0xA6, 0x00, 0x01 }); // cmp dword ptr [0x140ada0b0],0x1
-    }
-
-    // use the original flag to stop the IGT
-    if (!settings["igt_without_loads"] && current.timerCode == 0x1)
-    {
-        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x05, 0xC7, 0xCF, 0x01, 0x00 }); // cmp dword ptr [0x141d6ec74],0x0
+        game.WriteValue<int>(baseAddress + 0x1D6EC74, current.isGameplay ? 0 : 1);
     }
 
     if (settings["area_reset"] && (current.gameStateFlags & 0x76) == 0 && current.areaCode != "title" && current.areaCode != "select") // is not in the menu, title screen, cutscenes, codec
@@ -188,7 +190,7 @@ update
         if (current.inputs == 0x3C00 && current.deathTimer == 0) // inputs = R1 + L1 + Triangle + Circle
         {
             var value = current.deathFlags | 0x00000005;
-            ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E35A3C, value);
+            ExtensionMethods.WriteValue<int>(game, baseAddress + 0x1E35A3C, value);
             vars.AreaResetTriggered = true;
         }
 
@@ -204,8 +206,8 @@ update
         if (current.inputs == 0x3F00 && current.deathTimer == 0) // inputs = R2 + L2 + R1 + L1 + Triangle + Circle
         {
             var value = current.deathFlags | 0x00000005;
-            ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E35A3C, value);
-            game.WriteBytes(modules.First().BaseAddress + 0x737E9, new byte[] { 0x3B, 0x7C, 0x87 }); // lea rdx, ["METAL GEAR SOLID3.exe"+8EB428] ("select")
+            ExtensionMethods.WriteValue<int>(game, baseAddress + 0x1E35A3C, value);
+            game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.QuickDevMenuAssemblyCode); // lea rdx, "select"
             vars.DevMenuTriggered = true;
         }
 
@@ -217,9 +219,9 @@ update
         }
     }
 
-    if (current.exitToTitleCode == 0x87 && current.areaCode == "select") // goes to select
+    if (current.areaCode == "select") // goes to select
     {
-        game.WriteBytes(modules.First().BaseAddress + 0x737E9, new byte[] { 0xE3, 0xB8, 0x85 }); // lea rdx, ["METAL GEAR SOLID3.exe"+8CF0D0] ("title")
+        game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.ExitToTitleScreenAssemblyCode); // lea rdx, "title"
     }
 
     vars.Igt = TimeSpan.FromSeconds(current.igt / 60.0).ToString(@"hh\:mm\:ss\.fff");
@@ -227,16 +229,10 @@ update
 
 shutdown
 {
-    // reset the timer code
-    if (current.timerCode == 0x1)
-    {
-        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x05, 0xC7, 0xCF, 0x01, 0x00 }); // cmp dword ptr [0x141d6ec74],0x0
-    }
-
     // reset exit to title screen code
-    if (current.exitToTitleCode == 0x87) // goes to select
+    if (settings["quick_dev_menu"])
     {
-        game.WriteBytes(modules.First().BaseAddress + 0x737E9, new byte[] { 0xE3, 0xB8, 0x85 }); // lea rdx, ["METAL GEAR SOLID3.exe"+8CF0D0] ("title")
+        game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.ExitToTitleScreenAssemblyCode); // lea rdx, "title"
     }
 }
 
