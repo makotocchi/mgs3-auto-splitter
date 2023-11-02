@@ -1,4 +1,4 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.1
 // By apel
 
 state("METAL GEAR SOLID3") 
@@ -13,11 +13,14 @@ state("METAL GEAR SOLID3")
     byte timerCode : 0x7256E;
     int deathFlags : 0x1E2B0D8;
     long gameOverPointer : 0x1D4EB08;
+    int gameOverPhase : 0x1D4EB08, 0x5C;
+    short inputs : 0x1D8E70C;
+    byte gameStateFlags : 0x1E35A13;
 }
 
 startup 
 {
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.1");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("game_mods", false, "Game Mods");
@@ -144,19 +147,6 @@ init
     {
         version = "Unknown - " + modules.First().ModuleMemorySize.ToString("X16");
     }
-
-    vars.GamepadHook = new LiveSplit.Model.Input.GamepadHook();
-    vars.GamepadHook.Poll();
-    foreach (var property in vars.GamepadHook.GetType().GetProperties(BindingFlags.NonPublic|BindingFlags.Instance))
-    {
-        if (property.Name == "Joysticks")
-        {
-            vars.Joysticks = property.GetValue(vars.GamepadHook);
-        }
-    }
-    vars.AreaResetWhen4 = 0;
-    vars.AreaIgtWhenAreaResetTriggered = 0;
-    print("Joysticks detected = " + vars.Joysticks.Count.ToString());
 }
 
 exit
@@ -185,68 +175,18 @@ update
 
     if (settings["area_reset"])
     {
-        // part of this code was taken from /LiveSplit/LiveSplit.Core/Model/Input/GamepadHook.cs
-        try
+        if ((current.gameStateFlags == 0x1 || current.gameStateFlags == 0x9) && current.areaCode != "title") // is not in the menu, title screen, cutscenes, codec
         {
-            bool brokenJoystick = false;
-
-            var i = 0;
-            foreach (var joystick in vars.Joysticks)
+            if (current.inputs == 0x3C00 && current.gameOverPhase == 0)
             {
-                try
-                {
-                    joystick.Poll();
-                    var states = joystick.GetBufferedData();
-                    foreach (var state in states)
-                    {
-                        var offset = (int)state.Offset;
-
-                        if (state.Value == 128 && (offset == 52 || offset == 53 || offset == 51 || offset == 49)) // L1, R1, Triangle or Circle pressed
-                        {
-                            vars.AreaResetWhen4++;
-                        }
-                        else if (state.Value == 0 && (offset == 52 || offset == 53 || offset == 51 || offset == 49)) // L1, R1, Triangle or Circle released
-                        {
-                            vars.AreaResetWhen4--;
-                        }
-                    }
-                }
-                catch
-                {
-                    brokenJoystick = true;
-                    break;
-                }
-
-                ++i;
-
-                if (vars.AreaResetWhen4 < 0)
-                {
-                    vars.AreaResetWhen4 = 0;
-                }
+                var value = current.deathFlags | 0x00300000;
+                ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E2B0D8, value);
             }
 
-            if (brokenJoystick)
+            if (current.inputs == 0x3C00 && (current.gameOverPhase >= 2 || current.gameOverPhase < 7))
             {
-                vars.Joysticks.RemoveAt(i);
+                ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
             }
-        }
-        catch
-        {
-        }
-
-        if (vars.AreaResetWhen4 == 4 && vars.AreaIgtWhenAreaResetTriggered == 0)
-        {
-            var value = current.deathFlags | 0x00300000;
-            ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E2B0D8, value);
-            vars.AreaIgtWhenAreaResetTriggered = current.areaIgt;
-            print("Area reset started");
-        }
-
-        if (vars.AreaIgtWhenAreaResetTriggered != 0 && current.areaIgt - vars.AreaIgtWhenAreaResetTriggered > 1)
-        {
-            ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
-            vars.AreaIgtWhenAreaResetTriggered = 0;
-            print("Area reset ended");
         }
     }
 }
