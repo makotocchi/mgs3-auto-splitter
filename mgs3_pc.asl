@@ -1,22 +1,28 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.1
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2
 // By apel
 
 state("METAL GEAR SOLID3") 
 {
     string7 areaCode : 0xAE39D8, 0x24;
     int igt : 0xAE39D8, 0x4C;
+    int areaIgt : 0xAE39D8, 0x48;
     bool isGameplay : 0xADA0B0;
     ushort vmStoryFlags : 0xAE39E8, 0x2;
     ushort seStoryFlags : 0xAE39E8, 0x4;
+    int splashScreenCheck : 0x143B160;
+    byte timerCode : 0x7256E;
+    int deathFlags : 0x1E2B0D8;
+    long gameOverPointer : 0x1D4EB08;
 }
 
 startup 
 {
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.1");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
-    // settings.Add("game_mods", true, "Game Mods");
-    // settings.Add("igt_without_loads", false, "IGT without Loads", "game_mods");
+    settings.Add("game_mods", false, "Game Mods");
+    settings.Add("igt_without_loads", false, "IGT without Loads", "game_mods");
+    settings.SetToolTip("igt_without_loads", "The autosplitter will modify the game's memory to change the IGT logic and stop the timer whenever the game is loading. This will affect the stats screen timer.");
 
     settings.Add("timer_mode", true, "Timer Mode");
     settings.SetToolTip("timer_mode", "The settings below define how the Game Timer in LiveSplit will work. Tick only one of the two options.");
@@ -119,22 +125,139 @@ startup
     settings.Add("other_splits", true, "Other Splits");
     settings.Add("stats_screen", true, "Stats Screen", "other_splits");
     settings.SetToolTip("stats_screen", "Automatically split when you reach the stats screen.");
+
+    settings.Add("qol_things", false, "Quality of Life Mods");
+    settings.Add("skip_splash_screens", false, "Skip Splash Screens", "qol_things");
+    settings.SetToolTip("skip_splash_screens", "Skip the splash screens when you start the game for faster resets.");
+    settings.Add("area_reset", false, "Experimental: Enable Area Resets", "qol_things");
+    settings.SetToolTip("area_reset", "Trigger an area reset by pressing R1 + L1 + Triangle + Circle.");
 }
 
 init
 {
-    if (modules.First().ModuleMemorySize == 0x1F2C000)
+    // steam or steamless exe
+    if (modules.First().ModuleMemorySize == 0x1F2C000 || modules.First().ModuleMemorySize == 0x1EF9000)
     {
-        version = "US v1.2.0";
+        version = "US/EU v1.2.0";
     }
     else
     {
-        version = "Unknown version - ModuleMemorySize = " + modules.First().ModuleMemorySize.ToString("X16");
+        version = "Unknown - " + modules.First().ModuleMemorySize.ToString("X16");
     }
+
+    vars.GamepadHook = new LiveSplit.Model.Input.GamepadHook();
+    vars.GamepadHook.Poll();
+    foreach (var property in vars.GamepadHook.GetType().GetProperties(BindingFlags.NonPublic|BindingFlags.Instance))
+    {
+        if (property.Name == "Joysticks")
+        {
+            vars.Joysticks = property.GetValue(vars.GamepadHook);
+        }
+    }
+    vars.AreaResetWhen4 = 0;
+    vars.AreaIgtWhenAreaResetTriggered = 0;
+    print("Joysticks detected = " + vars.Joysticks.Count.ToString());
+}
+
+exit
+{
 }
 
 update
 {
+    // setting the value in that address to 3 always skips the splash screens
+    if (settings["skip_splash_screens"] && (current.splashScreenCheck == 1 || current.splashScreenCheck == 2))
+    {
+        game.WriteValue<int>(modules.First().BaseAddress + 0x143B160, 3);
+    }
+
+    // use the IsLoading flag to stop the IGT
+    if (settings["igt_without_loads"] && current.timerCode == 0x0)
+    {
+        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x41, 0x7B, 0xA6, 0x00, 0x01 }); // cmp dword ptr [0x140ada0b0],0x1
+    }
+
+    // use the original flag to stop the IGT
+    if (!settings["igt_without_loads"] && current.timerCode == 0x1)
+    {
+        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x05, 0xC7, 0xCF, 0x01, 0x00 }); // cmp dword ptr [0x141d6ec74],0x0
+    }
+
+    if (settings["area_reset"])
+    {
+        // part of this code was taken from /LiveSplit/LiveSplit.Core/Model/Input/GamepadHook.cs
+        try
+        {
+            bool brokenJoystick = false;
+
+            var i = 0;
+            foreach (var joystick in vars.Joysticks)
+            {
+                try
+                {
+                    joystick.Poll();
+                    var states = joystick.GetBufferedData();
+                    foreach (var state in states)
+                    {
+                        var offset = (int)state.Offset;
+
+                        if (state.Value == 128 && (offset == 52 || offset == 53 || offset == 51 || offset == 49)) // L1, R1, Triangle or Circle pressed
+                        {
+                            vars.AreaResetWhen4++;
+                        }
+                        else if (state.Value == 0 && (offset == 52 || offset == 53 || offset == 51 || offset == 49)) // L1, R1, Triangle or Circle released
+                        {
+                            vars.AreaResetWhen4--;
+                        }
+                    }
+                }
+                catch
+                {
+                    brokenJoystick = true;
+                    break;
+                }
+
+                ++i;
+
+                if (vars.AreaResetWhen4 < 0)
+                {
+                    vars.AreaResetWhen4 = 0;
+                }
+            }
+
+            if (brokenJoystick)
+            {
+                vars.Joysticks.RemoveAt(i);
+            }
+        }
+        catch
+        {
+        }
+
+        if (vars.AreaResetWhen4 == 4 && vars.AreaIgtWhenAreaResetTriggered == 0)
+        {
+            var value = current.deathFlags | 0x00300000;
+            ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E2B0D8, value);
+            vars.AreaIgtWhenAreaResetTriggered = current.areaIgt;
+            print("Area reset started");
+        }
+
+        if (vars.AreaIgtWhenAreaResetTriggered != 0 && current.areaIgt - vars.AreaIgtWhenAreaResetTriggered > 1)
+        {
+            ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
+            vars.AreaIgtWhenAreaResetTriggered = 0;
+            print("Area reset ended");
+        }
+    }
+}
+
+shutdown
+{
+    // reset the timer code
+    if (settings["igt_without_loads"] && current.timerCode == 0x1)
+    {
+        game.WriteBytes(modules.First().BaseAddress + 0x72568, new byte[] { 0x83, 0x3D, 0x05, 0xC7, 0xCF, 0x01, 0x00 }); // cmp dword ptr [0x141d6ec74],0x0
+    }
 }
 
 gameTime
