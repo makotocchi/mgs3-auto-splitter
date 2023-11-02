@@ -1,4 +1,4 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.1
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.2
 // By apel
 
 state("METAL GEAR SOLID3") 
@@ -20,7 +20,7 @@ state("METAL GEAR SOLID3")
 
 startup 
 {
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.1");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.2.2");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("game_mods", false, "Game Mods");
@@ -134,6 +134,8 @@ startup
     settings.SetToolTip("skip_splash_screens", "Skip the splash screens when you start the game for faster resets.");
     settings.Add("area_reset", false, "Experimental: Enable Area Resets", "qol_things");
     settings.SetToolTip("area_reset", "Trigger an area reset by pressing R1 + L1 + Triangle + Circle.");
+
+    vars.AreaResetTriggered = false;
 }
 
 init
@@ -175,17 +177,19 @@ update
 
     if (settings["area_reset"])
     {
-        if ((current.gameStateFlags == 0x1 || current.gameStateFlags == 0x9) && current.areaCode != "title") // is not in the menu, title screen, cutscenes, codec
+        if ((current.gameStateFlags & 0x76) == 0 && current.areaCode != "title") // is not in the menu, title screen, cutscenes, codec
         {
             if (current.inputs == 0x3C00 && current.gameOverPhase == 0)
             {
                 var value = current.deathFlags | 0x00300000;
                 ExtensionMethods.WriteValue<int>(game, modules.First().BaseAddress + 0x1E2B0D8, value);
+                vars.AreaResetTriggered = true;
             }
 
-            if (current.inputs == 0x3C00 && (current.gameOverPhase >= 2 || current.gameOverPhase < 7))
+            if (vars.AreaResetTriggered && (current.gameOverPhase >= 2 || current.gameOverPhase < 7))
             {
                 ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
+                vars.AreaResetTriggered = false;
             }
         }
     }
