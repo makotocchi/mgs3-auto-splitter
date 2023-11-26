@@ -1,51 +1,13 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.5
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6
 // By apel
 
 state("METAL GEAR SOLID3") 
 {
-    string7 areaCode : 0xAE49D8, 0x24;
-    int igt : 0xAE49D8, 0x4C;
-    bool isGameplay : 0xADB0A8;
-    short vmStoryFlags : 0xAE49E8, 0x2;
-    short seStoryFlags : 0xAE49E8, 0x4;
-
-    // Variables for QoL Mods
-    int areaIgt : 0xAE49D8, 0x48;
-    short continues : 0xAE49D8, 0x34;
-    int splashScreenCheck : 0x143C150;
-    short inputs : 0x1D8F6FC;
-    int deathFlags : 0x1E36A1C;
-    long gameOverPointer : 0x1D4FAF8;
-    int gameOverPhase : 0x1D4FAF8, 0x5C;
-    int deathTimer : 0x1E36A28;
-    byte gameStateFlags : 0x1E369F3;
-    byte areaTransition : 0x1E369F5;
-}
-
-state("METAL GEAR SOLID3", "v1.2.x") 
-{
-    string7 areaCode : 0xAE39D8, 0x24;
-    int igt : 0xAE39D8, 0x4C;
-    bool isGameplay : 0xADA0B0;
-    short vmStoryFlags : 0xAE39E8, 0x2;
-    short seStoryFlags : 0xAE39E8, 0x4;
-
-    // Variables for QoL Mods
-    int areaIgt : 0xAE39D8, 0x48;
-    short continues : 0xAE39D8, 0x34;
-    int splashScreenCheck : 0x143B160;
-    short inputs : 0x1D8E70C;
-    int deathFlags : 0x1E35A3C;
-    long gameOverPointer : 0x1D4EB08;
-    int gameOverPhase : 0x1D4EB08, 0x5C;
-    int deathTimer : 0x1E35A48;
-    byte gameStateFlags : 0x1E35A13;
-    byte areaTransition : 0x1E35A15;
 }
 
 startup 
 {
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.5");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("timer_mode", true, "Timer Mode");
@@ -180,32 +142,6 @@ startup
     settings.SetToolTip("quick_dev_menu", "Go to the dev menu by pressing R2 + L2 + R1 + L1 + Triangle + Circle.");
     // settings.Add("area_practice", false, "Experimental: Enable Area Practice", "qol_things");
     // settings.SetToolTip("area_practice", "Enabling this will force the game to repeat the same room once you hit a transition.");
-
-    //
-    // ┌────────────────────────────────────────────────────────────────────────────┐
-    // │                                                                            │
-    // │ Uncomment the lines below if you want to reenable IGT without loads        │
-    // │                                                                            │
-    // └────────────────────────────────────────────────────────────────────────────┘
-    //
-    // settings.Add("game_mods", false, "Game Mods");
-    // settings.Add("igt_without_loads", false, "IGT without Loads", "game_mods");
-    // settings.SetToolTip("igt_without_loads", "The autosplitter will modify the game's memory to change the IGT logic and stop the timer whenever the game is loading. This will affect the stats screen timer.");
-
-    vars.DeathFlagsAddress = null;
-    vars.QuickDevMenuModAddress = null;
-    vars.ExitToTitleScreenAssemblyCode = null;
-    vars.QuickDevMenuAssemblyCode = null;
-    vars.AreaResetTriggered = false;
-    vars.DevMenuTriggered = false;
-    vars.GameOverButtonClicked = false;
-    // vars.IgtWhenTransitionStarted = 0;
-    // vars.IgtWhenAreaStarted = 0;
-    // vars.IgtWhenLoadingStarted = 0;
-    // vars.AreaWhenLoadingStarted = "";
-    // vars.AreaWhenTransitionStarted = "";
-    // vars.TimeSpentInPreviousArea = TimeSpan.FromSeconds(0);
-    vars.Igt = TimeSpan.FromSeconds(0).ToString(@"hh\:mm\:ss\.fff");
 }
 
 init
@@ -217,128 +153,178 @@ init
     if (moduleMemorySize == 0x1F2D000 || moduleMemorySize == 0x1EFA000)
     {
         version = "v1.3.x";
-        vars.DeathFlagsAddress = 0x1E36A1C;
     }
     else if (moduleMemorySize == 0x1F2C000 || moduleMemorySize == 0x1EF9000)
     {
         version = "v1.2.x";
-        vars.DeathFlagsAddress = 0x1E35A3C;
     }
     else
     {
         version = "Unknown - " + moduleMemorySize.ToString("X16");
-        vars.DeathFlagsAddress = 0x1E36A1C;
     }
 
     vars.QuickDevMenuModAddress = null;
     vars.ExitToTitleScreenAssemblyCode = null;
     vars.QuickDevMenuAssemblyCode = null;
-    vars.AreaResetTriggered = false;
-    vars.DevMenuTriggered = false;
-    vars.GameOverButtonClicked = false;
-    // vars.IgtWhenTransitionStarted = 0;
-    // vars.IgtWhenAreaStarted = 0;
-    // vars.IgtWhenLoadingStarted = 0;
-    // vars.AreaWhenLoadingStarted = "";
-    // vars.AreaWhenTransitionStarted = "";
-    // vars.TimeSpentInPreviousArea = TimeSpan.FromSeconds(0);
+
+    vars.ForceGameOver = false;
+    vars.GoToDevMenu = false;
+    vars.GameOverScreenPhase = 0;
+
     vars.Igt = TimeSpan.FromSeconds(0).ToString(@"hh\:mm\:ss\.fff");
+
+    var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
+    var scanResult = scanner.Scan(new SigScanTarget(0, "48 8B 0D ?? ?? ?? 00 F7 41 08 00 40 00 00 75 09 8B 05 30 ?? CF 01 01 41 4C")); // Stats Pointer AOB Scan
+
+    vars.StatsPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 3) + (long)scanResult + 0x7);
+    vars.StoryFlagsPointer = (IntPtr)((long)vars.StatsPointer + 0x10);
+
+    scanResult = scanner.Scan(new SigScanTarget(0, "89 3D ?? ?? ?? 00 E8 B9 23 00 00")); // IsGameplay Flag AOB Scan
+    vars.IsGameplayFlagAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6);
+    
+    scanResult = scanner.Scan(new SigScanTarget(0, "E8 22 F9 FF FF C7 05 ?? ?? ?? 01 03 00 00 00")); // Skip Intro AOB Scan
+    vars.SkipIntroAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x7) + (long)scanResult + 0xF);
+
+    scanResult = scanner.Scan(new SigScanTarget(0, "48 89 45 27 45 33 F6 48 8D 1D ?? ?? ?? 01 41 8B F6")); // Inputs AOB Scan
+    vars.InputsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0xA) + (long)scanResult + 0xE - 0x34);
+
+    scanResult = scanner.Scan(new SigScanTarget(0, "F3 05 00 48 8B 05 ?? ?? ?? 01 48 8B 5C 24 30 48 83 C4 20 5F C3")); // Game Over Pointer AOB Scan
+    vars.GameOverPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x6) + (long)scanResult + 0xA - 0x10);
+
+    scanResult = scanner.Scan(new SigScanTarget(0, "75 75 8B 0D ?? ?? ?? 01 F6 C1 03 75 6A 85 C9 75 4A")); // Death Flags AOB Scan
+    vars.DeathFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x4) + (long)scanResult + 0x8);
+    vars.DeathTimerAddress = (IntPtr)(vars.DeathFlagsAddress + 0xC);
+
+    scanResult = scanner.Scan(new SigScanTarget(0, "0B 05 ?? ?? ?? 01 0F BA E0 09 72 14 8B CE")); // Game State Flags AOB Scan
+    vars.GameStateFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6 + 0x3);
+    vars.AreaTransitionFlagAddress = (IntPtr)(vars.GameStateFlagsAddress + 0x2);
+
+    vars.Memory = new MemoryWatcherList();
+    vars.Memory.Add(new StringWatcher(new DeepPointer(vars.StatsPointer, 0x24), 7) { Name = "AreaCode" });
+    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StatsPointer, 0x34)) { Name = "Continues" });
+    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x48)) { Name = "AreaIGT" });
+    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x4C)) { Name = "IGT" });
+    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x2)) { Name = "VMStoryFlags" });
+    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x4)) { Name = "SEStoryFlags" });
+    vars.Memory.Add(new MemoryWatcher<bool>(vars.IsGameplayFlagAddress) { Name = "IsGameplay" });
+    vars.Memory.Add(new MemoryWatcher<int>(vars.SkipIntroAddress) { Name = "SplashScreenCheck" });
+    vars.Memory.Add(new MemoryWatcher<short>(vars.InputsAddress) { Name = "Inputs" });
+    vars.Memory.Add(new MemoryWatcher<long>(vars.GameOverPointer) { Name = "GameOverPointer" });
+    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.GameOverPointer, 0x5C)) { Name = "GameOverPhase" });
+    vars.Memory.Add(new MemoryWatcher<int>(vars.DeathFlagsAddress) { Name = "DeathFlags" });
+    vars.Memory.Add(new MemoryWatcher<int>(vars.DeathTimerAddress) { Name = "DeathTimer" });
+    vars.Memory.Add(new MemoryWatcher<byte>(vars.GameStateFlagsAddress) { Name = "GameStateFlags" });
+    vars.Memory.Add(new MemoryWatcher<byte>(vars.AreaTransitionFlagAddress) { Name = "AreaTransitionFlag" });
 }
 
 update
 {
+    vars.Memory.UpdateAll(game);
+
     var baseAddress = modules.First().BaseAddress;
 
     // setting the value in that address to 3 always skips the splash screens
-    if (settings["skip_splash_screens"] && (current.splashScreenCheck == 1 || current.splashScreenCheck == 2))
+    if (settings["skip_splash_screens"] && (vars.Memory["SplashScreenCheck"].Current == 1 || vars.Memory["SplashScreenCheck"].Current == 2))
     {
-        game.WriteValue<int>(baseAddress + 0x143B160, 3);
+        game.WriteValue<int>((IntPtr)vars.SkipIntroAddress, 3);
     }
 
-    if (settings.ContainsKey("igt_without_loads") && settings["igt_without_loads"])
+    if ((settings["area_reset"] || settings["quick_dev_menu"]) && 
+        !vars.ForceGameOver &&
+        (vars.Memory["GameStateFlags"].Current & 0x76) == 0 && // is not in the menu, cutscenes, codec
+        vars.Memory["AreaCode"].Current != "title" && // is not in the title screen
+        vars.Memory["AreaCode"].Current != "select" &&  // is not in the dev menu
+        vars.Memory["DeathTimer"].Current == 0 &&  // is not dead
+        vars.Memory["AreaIGT"].Current > 100) // has entered an area
     {
-        game.WriteValue<int>(baseAddress + 0x1D6EC74, current.isGameplay ? 0 : 1);
-    }
-
-    if ((current.gameStateFlags & 0x76) == 0 && current.areaCode != "title" && current.areaCode != "select") // is not in the menu, title screen, cutscenes, codec
-    {
-        if (settings["area_reset"]) 
+        // inputs = R1 + L1 + Triangle + Circle
+        if (settings["area_reset"] &&
+            vars.Memory["Inputs"].Old != 0x3C00 && 
+            vars.Memory["Inputs"].Current == 0x3C00)
         {
-            if (!vars.AreaResetTriggered && old.inputs != 0x3C00 && current.inputs == 0x3C00 && current.deathTimer == 0 && current.areaIgt > 100) // inputs = R1 + L1 + Triangle + Circle
-            {
-                print("Triggering area reset - Part 1");
-                var value = current.deathFlags | 0x00000005;
-                ExtensionMethods.WriteValue<int>(game, baseAddress + vars.DeathFlagsAddress, value);
-                vars.AreaResetTriggered = true;
-            }
-
-            if (vars.AreaResetTriggered && !vars.GameOverButtonClicked && current.deathTimer < -1 && (current.gameOverPhase >= 2 || current.gameOverPhase < 7))
-            {
-                print("Triggering area reset - Part 2");
-                ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
-                vars.GameOverButtonClicked = true;
-            }
-
-            if (vars.GameOverButtonClicked && current.continues > old.continues)
-            {
-                print("Triggering area reset - Part 3");
-                vars.GameOverButtonClicked = false;
-                vars.AreaResetTriggered = false;
-            }
+            vars.ForceGameOver = true;
         }
 
-        if (settings["quick_dev_menu"])
+        // inputs = R2 + L2 + R1 + L1 + Triangle + Circle
+        if (settings["quick_dev_menu"] &&
+            vars.Memory["Inputs"].Old != 0x3F00 && 
+            vars.Memory["Inputs"].Current == 0x3F00)
         {
-            if (!vars.DevMenuTriggered && old.inputs != 0x3F00 && current.inputs == 0x3F00 && current.deathTimer == 0 && current.areaIgt > 100) // inputs = R2 + L2 + R1 + L1 + Triangle + Circle
-            {
-                if (vars.QuickDevMenuModAddress == null || vars.ExitToTitleScreenAssemblyCode == null || vars.QuickDevMenuAssemblyCode == null)
-                {
-                    var moduleMemorySize = modules.First().ModuleMemorySize;
-                    var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
-                    var loadTitleCode = scanner.Scan(new SigScanTarget(0, "E8 6E FA FF FF 48 8D"));
-                    vars.QuickDevMenuModAddress = loadTitleCode - 4;
-                    vars.ExitToTitleScreenAssemblyCode = memory.ReadValue<int>((IntPtr)vars.QuickDevMenuModAddress); // this is going to read an address that points to the string "title"
-                    vars.QuickDevMenuAssemblyCode = vars.ExitToTitleScreenAssemblyCode + 0x1C358; // adding 0x1C358 to the "title" address gives us the string "select"
-                }
-
-                print("Triggering quick dev menu - Part 1");
-                var value = current.deathFlags | 0x00000005;
-                ExtensionMethods.WriteValue<int>(game, baseAddress + vars.DeathFlagsAddress, value);
-                game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.QuickDevMenuAssemblyCode); // lea rdx, "select"
-                vars.DevMenuTriggered = true;
-            }
-
-            if (vars.DevMenuTriggered && !vars.GameOverButtonClicked && current.deathTimer < -1 && (current.gameOverPhase >= 2 || current.gameOverPhase < 7))
-            {
-                print("Triggering quick dev menu - Part 2");
-                ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x58), 1);
-                ExtensionMethods.WriteValue<int>(game, (IntPtr)(current.gameOverPointer + 0x5C), 7);
-                vars.GameOverButtonClicked = true;
-            }
+            vars.ForceGameOver = true;
+            vars.GoToDevMenu = true;
         }
     }
 
-    if (settings["quick_dev_menu"] && vars.GameOverButtonClicked && current.areaCode == "select" && old.areaCode != "select")
+    if (vars.GoToDevMenu && vars.QuickDevMenuModAddress == null || vars.ExitToTitleScreenAssemblyCode == null || vars.QuickDevMenuAssemblyCode == null)
     {
-        print("Triggering quick dev menu - Part 3");
-        game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.ExitToTitleScreenAssemblyCode); // lea rdx, "title"
-        vars.GameOverButtonClicked = false;
-        vars.DevMenuTriggered = false;
+        var moduleMemorySize = modules.First().ModuleMemorySize;
+        var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
+        vars.QuickDevMenuModAddress = (IntPtr)((scanner.Scan(new SigScanTarget(0, "E8 6E FA FF FF 48 8D"))) - 4);
+        vars.ExitToTitleScreenAssemblyCode = memory.ReadValue<int>((IntPtr)vars.QuickDevMenuModAddress); // this is going to read an address that points to the string "title"
+        vars.QuickDevMenuAssemblyCode = vars.ExitToTitleScreenAssemblyCode + 0x1C358; // adding 0x1C358 to the "title" address gives us the string "select"
     }
 
-    vars.Igt = TimeSpan.FromSeconds(current.igt / 60.0).ToString(@"hh\:mm\:ss\.ff");
+    if (vars.ForceGameOver)
+    {
+        if (vars.GameOverScreenPhase == 0)
+        {
+            print("Triggering game over - Part 1");
+            vars.GameOverScreenPhase = 1;
+
+            if (vars.GoToDevMenu)
+            {
+                game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.QuickDevMenuAssemblyCode); // the game over Exit button will lead you to the dev menu
+            }
+
+            int value = vars.Memory["DeathFlags"].Current | 0x00000005;
+            game.WriteValue<int>((IntPtr)vars.DeathFlagsAddress, value);
+
+        }
+
+        if (vars.GameOverScreenPhase == 1 && 
+            vars.Memory["DeathTimer"].Current < -1 && 
+            (vars.Memory["GameOverPhase"].Current >= 2 || vars.Memory["GameOverPhase"].Current < 7))
+        {
+            print("Triggering game over - Part 2");
+            vars.GameOverScreenPhase = 2;
+
+            if (vars.GoToDevMenu)
+            {
+                game.WriteValue<int>((IntPtr)(vars.Memory["GameOverPointer"].Current + 0x58), 1); // selects the Exit button in the game over screen
+            }
+
+            game.WriteValue<int>((IntPtr)(vars.Memory["GameOverPointer"].Current + 0x5C), 7); // presses the button in the game over screen
+        }
+
+        if (vars.GameOverScreenPhase == 2 && 
+            ((vars.Memory["Continues"].Current > vars.Memory["Continues"].Old) || (vars.Memory["AreaCode"].Current != vars.Memory["AreaCode"].Old)))
+        {
+            print("Triggering game over - Part 3");
+            vars.GameOverScreenPhase = 0;
+
+            if (vars.GoToDevMenu)
+            {
+                game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.ExitToTitleScreenAssemblyCode); // the game over Exit button will lead you to the title screen
+            }
+
+            vars.ForceGameOver = false;
+            vars.GoToDevMenu = false;
+        }
+    }
+
+    vars.Igt = TimeSpan.FromSeconds(vars.Memory["IGT"].Current / 60.0).ToString(@"hh\:mm\:ss\.ff");
 
     // if (settings["area_practice"])
     // {
     //     if (current.areaTransition == 2 && old.areaTransition != 2)
     //     {
-    //         vars.IgtWhenTransitionStarted = current.igt;
+    //         vars.IgtWhenTransitionStarted = vars.Memory["IGT"].Current;
     //     }
 
-    //     var framesSpentInTransition = current.igt - vars.IgtWhenTransitionStarted;
+    //     var framesSpentInTransition = vars.Memory["IGT"].Current - vars.IgtWhenTransitionStarted;
     //     if (current.areaTransition == 2 && framesSpentInTransition == 118)
     //     {
-    //         var value = current.deathFlags | 0x00000005;
+    //         var value = vars.Memory["DeathFlags"].Current | 0x00000005;
     //         ExtensionMethods.WriteValue<int>(game, baseAddress + 0x1E35A3C, value);
     //         vars.AreaResetTriggered = true;
     //     }
@@ -346,21 +332,21 @@ update
 
     // if (current.areaTransition == 2 && old.areaTransition != 2)
     // {
-    //     vars.TimeSpentInPreviousArea = TimeSpan.FromSeconds((current.igt - vars.IgtWhenAreaStarted + 120) / 60.0).ToString(@"hh\:mm\:ss\.ff");
-    //     vars.AreaWhenTransitionStarted = current.areaCode;
+    //     vars.TimeSpentInPreviousArea = TimeSpan.FromSeconds((vars.Memory["IGT"].Current - vars.IgtWhenAreaStarted + 120) / 60.0).ToString(@"hh\:mm\:ss\.ff");
+    //     vars.AreaWhenTransitionStarted = vars.Memory["AreaCode"].Current;
     //     print("Time spent in previous area: " + vars.TimeSpentInPreviousArea);
     // }
 
-    // if (current.isGameplay && !old.isGameplay && current.areaCode != vars.AreaWhenTransitionStarted)
+    // if (vars.Memory["IsGameplay"].Current && !old.isGameplay && vars.Memory["AreaCode"].Current != vars.AreaWhenTransitionStarted)
     // {
-    //     print("IGT When Area Started: " + current.igt.ToString());
-    //     vars.IgtWhenAreaStarted = current.igt;
+    //     print("IGT When Area Started: " + vars.Memory["IGT"].Current.ToString());
+    //     vars.IgtWhenAreaStarted = vars.Memory["IGT"].Current;
     // }
 
-    // if (!current.isGameplay && old.isGameplay)
+    // if (!vars.Memory["IsGameplay"].Current && old.isGameplay)
     // {
-    //     print("IGT When Loading Started: " + current.igt.ToString());
-    //     vars.AreaWhenLoadingStarted = current.areaCode;
+    //     print("IGT When Loading Started: " + vars.Memory["IGT"].Current.ToString());
+    //     vars.AreaWhenLoadingStarted = vars.Memory["AreaCode"].Current;
     // }
 }
 
@@ -377,7 +363,7 @@ gameTime
 {
     if (settings["igt"])
     {
-        return TimeSpan.FromSeconds(current.igt / 60.0);
+        return TimeSpan.FromSeconds(vars.Memory["IGT"].Current / 60.0);
     }
 }
 
@@ -385,7 +371,7 @@ isLoading
 {
     if (settings["rta_without_loads"])
     {
-        return !current.isGameplay;
+        return !vars.Memory["IsGameplay"].Current;
     }
 
     return settings["igt"];
@@ -393,68 +379,68 @@ isLoading
 
 start 
 {
-    return current.areaCode == "v000a_0" && current.isGameplay && current.vmStoryFlags == 0x0;
+    return vars.Memory["AreaCode"].Current == "v000a_0" && vars.Memory["IsGameplay"].Current && vars.Memory["VMStoryFlags"].Current == 0x0;
 }
 
 reset
 {
-    return old.areaCode != "title" && current.areaCode == "title";
+    return vars.Memory["AreaCode"].Old != "title" && vars.Memory["AreaCode"].Current == "title";
 }
 
 split
 {
-    if (old.seStoryFlags == 0x25 && current.seStoryFlags == 0x26)
+    if (vars.Memory["SEStoryFlags"].Old == 0x25 && vars.Memory["SEStoryFlags"].Current == 0x26)
     {
         return settings["the_pain_phase_1"];
     }
 
-    if (old.seStoryFlags == 0x27 && current.seStoryFlags == 0x28)
+    if (vars.Memory["SEStoryFlags"].Old == 0x27 && vars.Memory["SEStoryFlags"].Current == 0x28)
     {
         return settings["the_pain_phase_2"];
     }
 
-    if (current.areaCode == "s033a" && current.seStoryFlags == 0x2A && (current.gameStateFlags & 0x10) == 0x10 && (old.gameStateFlags & 0x10) == 0x0)
+    if (vars.Memory["AreaCode"].Current == "s033a" && vars.Memory["SEStoryFlags"].Current == 0x2A && (vars.Memory["GameStateFlags"].Current & 0x10) == 0x10 && (vars.Memory["GameStateFlags"].Old & 0x10) == 0x0)
     {
         return settings["cave_entrance_cutscene"];
     }
 
-    if ((current.seStoryFlags == 0x41 || current.seStoryFlags == 0x42) && (old.areaCode == "s063a" || old.areaCode == "s064a" || old.areaCode == "s065a") && current.areaCode == "s065a_0")
+    if ((vars.Memory["SEStoryFlags"].Current == 0x41 || vars.Memory["SEStoryFlags"].Current == 0x42) && (vars.Memory["AreaCode"].Old == "s063a" || vars.Memory["AreaCode"].Old == "s064a" || vars.Memory["AreaCode"].Old == "s065a") && vars.Memory["AreaCode"].Current == "s065a_0")
     {
         return settings["the_end"];
     }
 
-    if (old.areaCode == "s081a" && current.areaCode == "s081a_0")
+    if (vars.Memory["AreaCode"].Old == "s081a" && vars.Memory["AreaCode"].Current == "s081a_0")
     {
-        return settings["the_fury"] && (current.seStoryFlags == 0x51 || current.seStoryFlags == 0x52);
+        return settings["the_fury"] && (vars.Memory["SEStoryFlags"].Current == 0x51 || vars.Memory["SEStoryFlags"].Current == 0x52);
     }
 
-    if (old.areaCode == "s122a" && current.areaCode == "s121a_1")
+    if (vars.Memory["AreaCode"].Old == "s122a" && vars.Memory["AreaCode"].Current == "s121a_1")
     {
-        return (settings["volgin_phase_1"] && current.seStoryFlags == 0x9C) || (settings["volgin_phase_2"] && current.seStoryFlags == 0x9E);
+        return (settings["volgin_phase_1"] && vars.Memory["SEStoryFlags"].Current == 0x9C) || (settings["volgin_phase_2"] && vars.Memory["SEStoryFlags"].Current == 0x9E);
     }
 
-    if (old.areaCode == "s191a" && current.areaCode == "s191a_0")
+    if (vars.Memory["AreaCode"].Old == "s191a" && vars.Memory["AreaCode"].Current == "s191a_0")
     {
-        return (settings["cure_eva"] && (current.seStoryFlags == 0xB9 || current.seStoryFlags == 0xBA)) || (settings["s191a"] && (current.seStoryFlags == 0xBB || current.seStoryFlags == 0xBC));
+        return (settings["cure_eva"] && (vars.Memory["SEStoryFlags"].Current == 0xB9 || vars.Memory["SEStoryFlags"].Current == 0xBA)) || (settings["s191a"] && (vars.Memory["SEStoryFlags"].Current == 0xBB || vars.Memory["SEStoryFlags"].Current == 0xBC));
     }
 
-    if (current.seStoryFlags == 0xF8 && old.seStoryFlags < 0xF8)
+    if (vars.Memory["SEStoryFlags"].Current == 0xF8 && vars.Memory["SEStoryFlags"].Old < 0xF8)
     {
         return settings["stats_screen"];
     }
 
-    if (old.areaCode != current.areaCode)
+    if (vars.Memory["AreaCode"].Old != vars.Memory["AreaCode"].Current)
     {
-        var transition = old.areaCode + " -> " + current.areaCode;
+        var transition = vars.Memory["AreaCode"].Old + " -> " + vars.Memory["AreaCode"].Current;
         if (settings.ContainsKey(transition))
         {
             print("Try split transition: " + transition);
-            return settings[old.areaCode + " -> " + current.areaCode];
+            return settings[vars.Memory["AreaCode"].Old + " -> " + vars.Memory["AreaCode"].Current];
         }
-        else if (settings.ContainsKey(old.areaCode))
+        else if (settings.ContainsKey(vars.Memory["AreaCode"].Old))
         {
-            print("Try split area exit: " + old.areaCode);
-            return settings[old.areaCode];
+            print("Try split area exit: " + vars.Memory["AreaCode"].Old);
+            return settings[vars.Memory["AreaCode"].Old];
         }
     }
 
