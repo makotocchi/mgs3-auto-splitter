@@ -152,8 +152,8 @@ startup
     settings.Add("quick_dev_menu", false, "Experimental: Enable Quick Dev Menu", "qol_things");
     settings.SetToolTip("quick_dev_menu", "Go to the dev menu by pressing R2 + L2 + R1 + L1 + Triangle + Circle.");
 
-    settings.Add("area_practice", false, "Experimental: Enable Area Practice", "qol_things");
-    settings.SetToolTip("area_practice", "Enabling this will force the game to repeat the same room once you hit a transition.");
+    // settings.Add("area_practice", false, "Experimental: Enable Area Practice", "qol_things");
+    // settings.SetToolTip("area_practice", "Enabling this will force the game to repeat the same room once you hit a transition.");
 
     vars.Log("Done with startup");
 }
@@ -271,7 +271,7 @@ update
         game.WriteValue<int>((IntPtr)vars.SkipIntroAddress, 3);
     }
 
-    if ((settings["area_reset"] || settings["quick_dev_menu"] || settings["area_practice"]) &&
+    if ((settings["area_reset"] || settings["quick_dev_menu"] /*|| settings["area_practice"]*/) &&
         !vars.ForceGameOver &&
         (vars.Memory["GameStateFlags"].Current & 0x76) == 0 && // is not in the menu, cutscenes, codec
         vars.Memory["AreaCode"].Current != "title" && // is not in the title screen
@@ -297,7 +297,7 @@ update
         }
 
         // inputs = R2 + L2 + R1 + L1 + Triangle + Up
-        if (settings["area_practice"] &&
+        /*if (settings["area_practice"] &&
             vars.Memory["Inputs"].Old != 0x1F10 &&
             vars.Memory["Inputs"].Current == 0x1F10)
         {
@@ -305,7 +305,7 @@ update
             vars.ForceGameOver = vars.AreaPracticeMode;
             vars.AreaPracticeForcedDeath = true;
             vars.Log("Area Practice Mode: " + vars.AreaPracticeMode.ToString());
-        }
+        }*/
     }
 
     if (vars.GoToDevMenu && vars.QuickDevMenuModAddress == null || vars.TitleOffset == null || vars.SelectOffset == null)
