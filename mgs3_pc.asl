@@ -203,67 +203,85 @@ init
 
     vars.Igt = TimeSpan.FromSeconds(0).ToString(@"hh\:mm\:ss\.fff");
 
-    var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
-    var scanResult = scanner.Scan(new SigScanTarget(0, "48 8B 0D ?? ?? ?? 00 F7 41 08 00 40 00 00 75 09 8B 05")); // Stats Pointer AOB Scan
+    vars.AutosplitterIsReady = false;
 
-    vars.StatsPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 3) + (long)scanResult + 0x7);
-    vars.StoryFlagsPointer = (IntPtr)((long)vars.StatsPointer + 0x10);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "89 3D ?? ?? ?? 00 E8 ?? ?? ?? ?? 8B CF")); // IsGameplay Flag AOB Scan
-    vars.IsGameplayFlagAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "E8 22 F9 FF FF C7 05 ?? ?? ?? 01 03 00 00 00")); // Skip Intro AOB Scan
-    vars.SkipIntroAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x7) + (long)scanResult + 0xF);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "48 89 45 27 45 33 F6 48 8D 1D ?? ?? ?? 01 41 8B F6")); // Inputs AOB Scan
-    vars.InputsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0xA) + (long)scanResult + 0xE - 0x34);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "F3 05 00 48 8B 05 ?? ?? ?? 01 48 8B 5C 24 30 48 83 C4 20 5F C3")); // Game Over Pointer AOB Scan
-    vars.GameOverPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x6) + (long)scanResult + 0xA - 0x10);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "75 75 8B 0D ?? ?? ?? 01 F6 C1 03 75 6A 85 C9 75 4A")); // Death Flags AOB Scan
-    vars.DeathFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x4) + (long)scanResult + 0x8);
-    vars.DeathTimerAddress = (IntPtr)(vars.DeathFlagsAddress + 0xC);
-
-    scanResult = scanner.Scan(new SigScanTarget(0, "0B 05 ?? ?? ?? 01 0F BA E0 09 72 14 8B CE")); // Game State Flags AOB Scan
-    vars.GameStateFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6 + 0x3);
-    vars.AreaTransitionFlagAddress = (IntPtr)(vars.GameStateFlagsAddress + 0x2);
-
-    vars.Memory = new MemoryWatcherList();
-    vars.Memory.Add(new StringWatcher(new DeepPointer(vars.StatsPointer, 0x24), 7) { Name = "AreaCode" });
-    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StatsPointer, 0x34)) { Name = "Continues" });
-    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x48)) { Name = "AreaIGT" });
-    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x4C)) { Name = "IGT" });
-    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x2)) { Name = "VMStoryFlags" });
-    vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x4)) { Name = "SEStoryFlags" });
-    vars.Memory.Add(new MemoryWatcher<bool>(vars.IsGameplayFlagAddress) { Name = "IsGameplay" });
-    vars.Memory.Add(new MemoryWatcher<int>(vars.SkipIntroAddress) { Name = "SplashScreenCheck" });
-    vars.Memory.Add(new MemoryWatcher<short>(vars.InputsAddress) { Name = "Inputs" });
-    vars.Memory.Add(new MemoryWatcher<long>(vars.GameOverPointer) { Name = "GameOverPointer" });
-    vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.GameOverPointer, 0x5C)) { Name = "GameOverPhase" });
-    vars.Memory.Add(new MemoryWatcher<int>(vars.DeathFlagsAddress) { Name = "DeathFlags" });
-    vars.Memory.Add(new MemoryWatcher<int>(vars.DeathTimerAddress) { Name = "DeathTimer" });
-    vars.Memory.Add(new MemoryWatcher<byte>(vars.GameStateFlagsAddress) { Name = "GameStateFlags" });
-    vars.Memory.Add(new MemoryWatcher<byte>(vars.AreaTransitionFlagAddress) { Name = "AreaTransitionFlag" });
-
-    vars.Log("Stats Pointer: " + ((long)vars.StatsPointer - (long)baseAddress).ToString("X16"));
-    vars.Log("Story Flags Pointer: " + ((long)vars.StoryFlagsPointer - (long)baseAddress).ToString("X16"));
-    vars.Log("Is Gameplay Flag Address: " + ((long)vars.IsGameplayFlagAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Skip Intro Address: " + ((long)vars.SkipIntroAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Inputs Address: " + ((long)vars.InputsAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Game Over Pointer: " + ((long)vars.GameOverPointer - (long)baseAddress).ToString("X16"));
-    vars.Log("Death Flags Address: " + ((long)vars.DeathFlagsAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Death Timer Address: " + ((long)vars.DeathTimerAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Game State Flags Address: " + ((long)vars.GameStateFlagsAddress - (long)baseAddress).ToString("X16"));
-    vars.Log("Area Transition Flag Address: " + ((long)vars.AreaTransitionFlagAddress - (long)baseAddress).ToString("X16"));
     vars.Log("Done with init");
 }
 
 update
 {
-    vars.Memory.UpdateAll(game);
-
     var baseAddress = modules.First().BaseAddress;
+
+    if (!vars.AutosplitterIsReady)
+    {
+        vars.Log("Scanning for addresses");
+
+        var moduleMemorySize = modules.First().ModuleMemorySize;
+        var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
+        var scanResult = scanner.Scan(new SigScanTarget(0, "48 8B 0D ?? ?? ?? 00 F7 41 08 00 40 00 00 75 09 8B 05")); // Stats Pointer AOB Scan
+
+        if (scanResult == IntPtr.Zero)
+        {
+            vars.Log("Waiting for game to initialize...");
+            return false;
+        }
+
+        vars.StatsPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 3) + (long)scanResult + 0x7);
+        vars.StoryFlagsPointer = (IntPtr)((long)vars.StatsPointer + 0x10);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "89 3D ?? ?? ?? 00 E8 ?? ?? ?? ?? 8B CF")); // IsGameplay Flag AOB Scan
+        vars.IsGameplayFlagAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "E8 22 F9 FF FF C7 05 ?? ?? ?? 01 03 00 00 00")); // Skip Intro AOB Scan
+        vars.SkipIntroAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x7) + (long)scanResult + 0xF);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "48 89 45 27 45 33 F6 48 8D 1D ?? ?? ?? 01 41 8B F6")); // Inputs AOB Scan
+        vars.InputsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0xA) + (long)scanResult + 0xE - 0x34);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "F3 05 00 48 8B 05 ?? ?? ?? 01 48 8B 5C 24 30 48 83 C4 20 5F C3")); // Game Over Pointer AOB Scan
+        vars.GameOverPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x6) + (long)scanResult + 0xA - 0x10);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "75 75 8B 0D ?? ?? ?? 01 F6 C1 03 75 6A 85 C9 75 4A")); // Death Flags AOB Scan
+        vars.DeathFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x4) + (long)scanResult + 0x8);
+        vars.DeathTimerAddress = (IntPtr)(vars.DeathFlagsAddress + 0xC);
+
+        scanResult = scanner.Scan(new SigScanTarget(0, "0B 05 ?? ?? ?? 01 0F BA E0 09 72 14 8B CE")); // Game State Flags AOB Scan
+        vars.GameStateFlagsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x2) + (long)scanResult + 0x6 + 0x3);
+        vars.AreaTransitionFlagAddress = (IntPtr)(vars.GameStateFlagsAddress + 0x2);
+
+        vars.Memory = new MemoryWatcherList();
+        vars.Memory.Add(new StringWatcher(new DeepPointer(vars.StatsPointer, 0x24), 7) { Name = "AreaCode" });
+        vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StatsPointer, 0x34)) { Name = "Continues" });
+        vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x48)) { Name = "AreaIGT" });
+        vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.StatsPointer, 0x4C)) { Name = "IGT" });
+        vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x2)) { Name = "VMStoryFlags" });
+        vars.Memory.Add(new MemoryWatcher<short>(new DeepPointer(vars.StoryFlagsPointer, 0x4)) { Name = "SEStoryFlags" });
+        vars.Memory.Add(new MemoryWatcher<bool>(vars.IsGameplayFlagAddress) { Name = "IsGameplay" });
+        vars.Memory.Add(new MemoryWatcher<int>(vars.SkipIntroAddress) { Name = "SplashScreenCheck" });
+        vars.Memory.Add(new MemoryWatcher<short>(vars.InputsAddress) { Name = "Inputs" });
+        vars.Memory.Add(new MemoryWatcher<long>(vars.GameOverPointer) { Name = "GameOverPointer" });
+        vars.Memory.Add(new MemoryWatcher<int>(new DeepPointer(vars.GameOverPointer, 0x5C)) { Name = "GameOverPhase" });
+        vars.Memory.Add(new MemoryWatcher<int>(vars.DeathFlagsAddress) { Name = "DeathFlags" });
+        vars.Memory.Add(new MemoryWatcher<int>(vars.DeathTimerAddress) { Name = "DeathTimer" });
+        vars.Memory.Add(new MemoryWatcher<byte>(vars.GameStateFlagsAddress) { Name = "GameStateFlags" });
+        vars.Memory.Add(new MemoryWatcher<byte>(vars.AreaTransitionFlagAddress) { Name = "AreaTransitionFlag" });
+
+        vars.Log("Stats Pointer: " + ((long)vars.StatsPointer - (long)baseAddress).ToString("X16"));
+        vars.Log("Story Flags Pointer: " + ((long)vars.StoryFlagsPointer - (long)baseAddress).ToString("X16"));
+        vars.Log("Is Gameplay Flag Address: " + ((long)vars.IsGameplayFlagAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Skip Intro Address: " + ((long)vars.SkipIntroAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Inputs Address: " + ((long)vars.InputsAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Game Over Pointer: " + ((long)vars.GameOverPointer - (long)baseAddress).ToString("X16"));
+        vars.Log("Death Flags Address: " + ((long)vars.DeathFlagsAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Death Timer Address: " + ((long)vars.DeathTimerAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Game State Flags Address: " + ((long)vars.GameStateFlagsAddress - (long)baseAddress).ToString("X16"));
+        vars.Log("Area Transition Flag Address: " + ((long)vars.AreaTransitionFlagAddress - (long)baseAddress).ToString("X16"));
+
+        vars.AutosplitterIsReady = true;
+        vars.Log("Autosplitter is ready!");
+    }
+
+    vars.Memory.UpdateAll(game);
 
     // setting the value in that address to 3 always skips the splash screens
     if (settings["skip_splash_screens"] && (vars.Memory["SplashScreenCheck"].Current == 1 || vars.Memory["SplashScreenCheck"].Current == 2))
@@ -308,7 +326,7 @@ update
         }*/
     }
 
-    if (vars.GoToDevMenu && vars.QuickDevMenuModAddress == null || vars.TitleOffset == null || vars.SelectOffset == null)
+    if (vars.GoToDevMenu && (vars.QuickDevMenuModAddress == null || vars.TitleOffset == null || vars.SelectOffset == null))
     {
         var moduleMemorySize = modules.First().ModuleMemorySize;
         var scanner = new SignatureScanner(game, baseAddress, moduleMemorySize);
@@ -426,7 +444,7 @@ update
 shutdown
 {
     // reset exit to title screen code
-    if (settings["quick_dev_menu"] && vars.QuickDevMenuModAddress != null && vars.TitleOffset != null)
+    if (game != null && settings["quick_dev_menu"] && vars.QuickDevMenuModAddress != null && vars.TitleOffset != null)
     {
         game.WriteValue<int>((IntPtr)vars.QuickDevMenuModAddress, (int)vars.TitleOffset); // lea rdx, "title"
     }
