@@ -1,4 +1,4 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6.1
 // By apel
 
 state("METAL GEAR SOLID3")
@@ -13,7 +13,7 @@ startup
 
     vars.Log("Running startup");
 
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6.1");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("timer_mode", true, "Timer Mode");
