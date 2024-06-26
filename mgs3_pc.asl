@@ -1,4 +1,4 @@
-// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6.1
+// Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.7
 // By apel
 
 state("METAL GEAR SOLID3")
@@ -13,7 +13,7 @@ startup
 
     vars.Log("Running startup");
 
-    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.6.1");
+    settings.Add("metadata", true, "Metal Gear Solid 3: Snake Eater - MC Version - Autosplitter v0.7");
     settings.SetToolTip("metadata", "This isn't an actual setting. It's just here to show which version you're using so I can tell you to update it if it's outdated.");
 
     settings.Add("timer_mode", true, "Timer Mode");
@@ -235,8 +235,8 @@ update
         scanResult = scanner.Scan(new SigScanTarget(0, "E8 22 F9 FF FF C7 05 ?? ?? ?? 01 03 00 00 00")); // Skip Intro AOB Scan
         vars.SkipIntroAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x7) + (long)scanResult + 0xF);
 
-        scanResult = scanner.Scan(new SigScanTarget(0, "48 89 45 27 45 33 F6 48 8D 1D ?? ?? ?? 01 41 8B F6")); // Inputs AOB Scan
-        vars.InputsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0xA) + (long)scanResult + 0xE - 0x34);
+        scanResult = scanner.Scan(new SigScanTarget(0, "5C 24 30 48 8B 74 24 38 89 05 ?? ?? ?? 01")); // Inputs AOB Scan
+        vars.InputsAddress = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0xA) + (long)scanResult + 0xE + 0xC);
 
         scanResult = scanner.Scan(new SigScanTarget(0, "F3 05 00 48 8B 05 ?? ?? ?? 01 48 8B 5C 24 30 48 83 C4 20 5F C3")); // Game Over Pointer AOB Scan
         vars.GameOverPointer = (IntPtr)((long)memory.ReadValue<int>(scanResult + 0x6) + (long)scanResult + 0xA - 0x10);
